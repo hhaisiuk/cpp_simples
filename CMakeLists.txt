@@ -1,10 +1,17 @@
-cmake_minimum_required(VERSION 3.5)
+# set minimum cmake version
+cmake_minimum_required(VERSION 3.29)
 
-project(MyProg.cpp VERSION 0.1.0 LANGUAGES C CXX)
+# project name and language
+project(simples LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDART 17)
+# require C++17
+set(CMAKE_CXX_STANDARD 17)
 
-add_executable(MyProg MyProg.cpp)
+# main code
+add_executable(${PROJECT_NAME} simples.cpp)
 
-set(CPACK_PROJECT_NAME ${PROJECT_NAME})
-set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
+# enable testing functionality
+enable_testing()
+
+# add subdirectory
+add_subdirectory(test)
