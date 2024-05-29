@@ -39,3 +39,4 @@ build
 # IDE
 .vs
 .vscode
+.clang-format
