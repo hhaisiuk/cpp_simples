@@ -1,91 +1,120 @@
-#include <utility>
-#include <cstring>
-#include <iostream>
+#include <tuple>
+#include <type_traits>
 
-template <typename T>
+template <typename Type>
+class deleter
+{
+public:
+    constexpr deleter() noexcept = default;
+    virtual ~deleter() = default;
+
+    virtual void operator()(Type* ptr) const { delete ptr; }
+};
+
+template <class Type, class Deleter = deleter<Type>>
 class Pointer
 {
 public:
-    explicit Pointer(size_t size = 0);
-    explicit Pointer(size_t size, const T& value);
-    ~Pointer();
+    /*  Member types */
+    using pointer = Type*;
+    using element_type = Type;
+    using deleter_type = Deleter;
 
-    Pointer(const Pointer&);
-    Pointer& operator=(const Pointer&);
+public: /** Member functions */
+    // Constructs a Pointer that owns nothing.
+    constexpr Pointer() noexcept = default;
+    // constexpr Pointer(std::nullopt_t) noexcept = default;
 
-    Pointer(Pointer&&);
-    Pointer& operator=(Pointer&&);
+    //  Constructs a Pointer which owns ptr, initializing the stored
+    // pointer with ptr and value - initializing the stored deleter.
+    explicit Pointer(pointer ptr) noexcept : _data() { m_ptr() = ptr; };
 
-public:
-    inline unsigned int size() const { return _size; };
-    inline T* data() { return _data; };
+    //  Constructs a Pointer object which owns ptr, initializing the stored
+    // pointer with ptr and initializing a deleter Del.
+    template <typename Del>
+    Pointer(pointer ptr, Del&& del) noexcept
+        : _data(ptr, std::forward<Del>(del)){};
+
+    //  Constructs a Pointer by transferring ownership from other to *this and
+    // stores the null pointer in other.
+    Pointer(Pointer&& other) noexcept : _data(std::move(other._data))
+    {
+        other.m_ptr() = nullptr;
+    };
+
+    Pointer& operator=(Pointer&& other) noexcept
+    {
+        reset(other.release());
+        m_del() = std::forward<Deleter>(other.m_del());
+        return *this;
+    }
+
+    ~Pointer()
+    {
+        auto& ptr = m_ptr();
+        if (ptr != nullptr)
+            m_del()(std::move(ptr));
+        ptr = pointer();
+    }
+
+    // Copy constructor and copy assignment operator are explicitly deleted.
+    Pointer(const Pointer&) = delete;
+    Pointer& operator=(const Pointer&) = delete;
+
+public: /* Modifiers methods */
+    // returns a pointer to the managed object and releases the ownership
+    pointer release() noexcept
+    {
+        pointer ptr = m_ptr();
+        m_ptr() = nullptr;
+        return ptr;
+    };
+
+    // replaces the managed object
+    void reset(pointer ptr = pointer()) noexcept
+    {
+        const pointer old = m_ptr();
+        m_ptr() = ptr;
+        if (old)
+            m_del()(old);
+    };
+
+    // swaps the managed objects
+    void swap(Pointer& other) noexcept
+    {
+        std::swap(this->m_ptr(), other.m_ptr());
+        std::swap(this->m_del(), other.m_del());
+    };
+
+    /* Observers methods */
+    // returns a pointer to the managed object
+    pointer get() const noexcept { return m_ptr(); };
+
+    // returns the deleter that is used for destruction of the managed object
+    deleter_type& get_deleter() noexcept { return m_del(); };
+    const deleter_type& get_deleter() const noexcept { return m_del(); };
+
+    // checks if there is an associated managed object
+    explicit operator bool() const noexcept
+    {
+        return get() == pointer() ? false : true;
+    };
+
+    // dereferences pointer to the managed object
+    typename std::add_lvalue_reference<element_type>::type operator*() const
+        noexcept(noexcept(*std::declval<pointer>()))
+    {
+        return *get();
+    };
+
+    pointer operator->() const noexcept { return get(); };
+
+protected:
+    pointer& m_ptr() noexcept { return std::get<0>(_data); };
+    pointer m_ptr() const noexcept { return std::get<0>(_data); }
+    deleter_type& m_del() noexcept { return std::get<1>(_data); }
+    const deleter_type& m_del() const noexcept { return std::get<1>(_data); }
 
 private:
-    inline void allocate() { if(_size > 0) _data = new T[_size]; }
-    inline void delocate() { if(_data) delete[] _data; }
-    
-private:
-    size_t _size;
-    T* _data;
+    std::tuple<pointer, deleter_type> _data;
 };
-
-template <typename T>
-Pointer<T>::Pointer(size_t size)
-    :  _size(size), _data(nullptr) 
-{
-    allocate();
-}
-
-template <typename T>
-Pointer<T>::Pointer(size_t size, const T& value)
-    : Pointer(size)
-{
-    auto iter = _data;
-    while (iter != _data + _size)
-        *(iter++) = value;
-}
-
-template <typename T>
-Pointer<T>::~Pointer() {
-    delocate();
-}
-
-template <typename T>
-Pointer<T>::Pointer(const Pointer& other)
-    : Pointer(other._size)
-{
-    if(this != &other && _size > 0)
-        std::memcpy(_data, other._data, (sizeof(T)  * _size));
-}
-
-template <typename T>
-Pointer<T>& Pointer<T>::operator=(const Pointer& other)
-{
-    if(this != &other) {
-        delocate();
-        _size = other._size;
-        allocate();
-        std::memcpy(_data, other._data, (sizeof(T) *_size));
-    }
-
-    return *this;
-}
-
-template <typename T>
-Pointer<T>::Pointer(Pointer&& other)
-    : _size(std::move(other._size))                 
-    , _data(std::move(other._data)) 
-{
-    other._data = nullptr;
-}
-
-template <typename T>
-Pointer<T>& Pointer<T>::operator=(Pointer&& other)
-{
-    if(this != &other) {
-        _size = std::exchange(other._size, 0);
-        _data = std::exchange(other._data, nullptr);
-    }
-        
-    return *this;
-}
