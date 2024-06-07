@@ -1,3 +1,5 @@
+#pragma once
+
 #include <tuple>
 #include <type_traits>
 
@@ -6,9 +8,8 @@ class deleter
 {
 public:
     constexpr deleter() noexcept = default;
-    virtual ~deleter() = default;
 
-    virtual void operator()(Type* ptr) const { delete ptr; }
+    void operator()(Type* ptr) const { delete ptr; }
 };
 
 template <class Type, class Deleter = deleter<Type>>
@@ -49,13 +50,7 @@ public: /** Member functions */
         return *this;
     }
 
-    ~Pointer()
-    {
-        auto& ptr = m_ptr();
-        if (ptr != nullptr)
-            m_del()(std::move(ptr));
-        ptr = pointer();
-    }
+    ~Pointer() { reset(nullptr); }
 
     // Copy constructor and copy assignment operator are explicitly deleted.
     Pointer(const Pointer&) = delete;
@@ -73,18 +68,13 @@ public: /* Modifiers methods */
     // replaces the managed object
     void reset(pointer ptr = pointer()) noexcept
     {
-        const pointer old = m_ptr();
+        if (m_ptr())
+            m_del()(m_ptr());
         m_ptr() = ptr;
-        if (old)
-            m_del()(old);
     };
 
     // swaps the managed objects
-    void swap(Pointer& other) noexcept
-    {
-        std::swap(this->m_ptr(), other.m_ptr());
-        std::swap(this->m_del(), other.m_del());
-    };
+    void swap(Pointer& other) noexcept { std::swap(_data, other._data); };
 
     /* Observers methods */
     // returns a pointer to the managed object
@@ -95,10 +85,7 @@ public: /* Modifiers methods */
     const deleter_type& get_deleter() const noexcept { return m_del(); };
 
     // checks if there is an associated managed object
-    explicit operator bool() const noexcept
-    {
-        return get() == pointer() ? false : true;
-    };
+    explicit operator bool() const noexcept { return get(); };
 
     // dereferences pointer to the managed object
     typename std::add_lvalue_reference<element_type>::type operator*() const
